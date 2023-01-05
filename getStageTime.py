@@ -28,9 +28,10 @@ def getKeys(path, stageTimeDict,patternNFormat, colorList):
         endTask = stageTimeDict[key][2]
 
         getStagesTime(stageName, stageFile, startTask,endTask,path,patternNFormat,colorList)
+    getImageValue(path)
     sortGraph()
 
-    getImageValue(path)
+    
 
 """If stage in log file, gets start time and end time of stages. And assign a list.
 Sometimes end time can be before line from starting time, So we cheks if starttime is not null then get endtime.
@@ -43,22 +44,26 @@ def getStagesTime(stageName, stageFile, startTask,endTask,path,patternNFormat,co
         endTime=""
         global colorCount
         k=0
+        endTaskCounts=0
         debug=False
         for line in lines:
+            
             if (startTask in line or stageFile in path) and not stageName=="Upgrade Duration Total":
                 matches = re.search(patternNFormat, line).group()
                 if matches:   
                     startTime=matches
+                    endTaskCounts=0
                 if stageName=="Primary Migration":
                    global migStartTime 
                    migStartTime= startTime
-            elif endTask in line and not startTime=="" and not stageName=="Upgrade Duration Total" and not endTask=="PLAY RECAP" and not endTask=="entTime" and not stageName=="Migrate DB":
+            elif endTask in line and not startTime=="" and not stageName=="Upgrade Duration Total" and not endTask=="PLAY RECAP" and not endTask=="entTime" and not stageName=="Migrate DB" and endTaskCounts<1:
                 matches = re.search(patternNFormat, line).group()
                 if matches: 
                     endTime=matches
                 if stageName=="Secondary Migration":
                    global migEndTime
                    migEndTime = endTime
+                endTaskCounts+=1
                                    
             elif stageName=="Upgrade Duration Total" and startTask in line:
                 matches = re.search(patternNFormat, line).group()
@@ -77,8 +82,8 @@ def getStagesTime(stageName, stageFile, startTask,endTask,path,patternNFormat,co
             elif (stageName=="Upgrade Duration Total" and endTask in line and endTime=="") or (endTask=="FILE_END" and endTime==""):
                 endTime=getLastTimeOfLog(stageFile,endTask,path)
           
-            elif stageName=="Full Migration" and startTime=="" and endTime=="":
-                if not any(stageNameGroups.startswith('Full Migration') for stageNameGroups in stageNameGroup):
+            elif stageName=="Migration Duration Total" and startTime=="" and endTime=="":
+                if not any(stageNameGroups.startswith('Migration Duration Total') for stageNameGroups in stageNameGroup):
                     startTime = migStartTime
                     endTime = migEndTime
                
@@ -140,13 +145,31 @@ def getImageValue(path):
     with open(os.path.join(path, "stackApiServer.log"), 'r') as f:
         lines = f.readlines()
         for line in lines:
-            if "new_value" in line and "prev_value" in line:
+            if "new_value" in line and "prev_value" in line and "MCP" in line:
                 lineNew = (line.split("'new_value': ")[1]).split(",")[0]
                 linePrev = (line.split("'prev_value': ")[1]).split(",")[0]
+                operator="upgrade"
+                Images.append(operator)
                 Images.append(lineNew)
                 Images.append(linePrev)
                 break
-
+            elif ("vsphere_file.upload" in line and "MCP" in line) or "Upload /resources/images/" in line :
+                if "Upload /resources/images/" in line:
+                    migrateImage=(line.split('images/')[1]).split(" to")[0]
+                else:
+                    migrateImage=(line.split('upload')[1]).split(":")[0]
+                operator="migration"
+                Images.append(operator)
+                Images.append(migrateImage)
+                Images.append("MCP_21.0")
+                break
+            elif not "Migration Duration Total 0" in stageNameGroup and not "Primary Migration 0" in stageNameGroup and not "Secondary Migration 0" in stageNameGroup:
+                if "vsphere_file.upload" in line and "MCP" in line:
+                    migrateImage=(line.split('upload')[1]).split(":")[0]
+                    operator="installation"
+                    Images.append(operator)
+                    Images.append(migrateImage)
+                    break
 # This function sorts all stages by starting time.
 def sortGraph():
         j=0
@@ -160,3 +183,40 @@ def sortGraph():
                     colorListGroup.insert(i, colorListGroup.pop(j))
                 j = j+1
             j = i+1
+        flag = True
+        if Images[0]=="upgrade":
+            for i in range(len(stageNameGroup)):
+                if stageNameGroup[i]=="Upgrade Duration Total 0":
+                    continue
+                if stageNameGroup[i] == "Check VM and Inconsistencies 2":
+                    flag = False
+                if flag:
+                    if not  stageNameGroup[i].startswith("Primary "):
+                        stageNameGroup[i] = "Primary " + stageNameGroup[i]
+                else:
+                    if not  stageNameGroup[i].startswith("Secondary "):
+                        stageNameGroup[i] = "Secondary " + stageNameGroup[i]
+        elif Images[0]=="migration":
+            for i in range(len(stageNameGroup)):
+                if stageNameGroup[i]=="Migration Duration Total 0":
+                    continue
+                if stageNameGroup[i] == "Secondary Migration 0":
+                    flag = False
+                if flag:
+                    if not  stageNameGroup[i].startswith("Primary "):
+                        stageNameGroup[i] = "Primary " + stageNameGroup[i]
+                else:
+                    if not  stageNameGroup[i].startswith("Secondary "):
+                        stageNameGroup[i] = "Secondary " + stageNameGroup[i]
+        elif Images[0]=="installation":
+            for i in range(len(stageNameGroup)):
+                if stageNameGroup[i]=="Installation Duration Total 0":
+                    continue
+                if stageNameGroup[i] == "Secondary Installation 0":
+                    flag = False
+                if flag:
+                    if not  stageNameGroup[i].startswith("Primary "):
+                        stageNameGroup[i] = "Primary " + stageNameGroup[i]
+                else:
+                    if not  stageNameGroup[i].startswith("Secondary "):
+                        stageNameGroup[i] = "Secondary " + stageNameGroup[i]

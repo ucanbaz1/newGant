@@ -45,11 +45,10 @@ def getLineNumber(path, filename):
             countLine += 1
             # Check if the current line is the special line
             if line.__contains__("Run chronyd with tmp NTP conf file to set system clock"):
-                #get the line date if the line is found
-                if not ntpCount==0 and ntpCount<2:
-                    timeRun = re.search(patternCommissioningTimeFormat,line).group()
-                ntpCount+=1
-            if timeRun !="" and line.__contains__("changed:"):
+                #get the line date if the line is found 2022-09-12 10:06:09,597
+                timeRun = re.search(patternCommissioningTimeFormat,line).group()
+                countTask=countLine
+            if timeRun !="" and line.__contains__("changed:") and countLine-countTask<10:
                 # Return the line number if the line is found
                 timeChange = re.search(patternCommissioningTimeFormat,line).group()
                 try:

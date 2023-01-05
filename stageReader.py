@@ -16,6 +16,10 @@ stageTimeDict={}
 
 # This function reads dictionary and check stages with if statement. Then it sends to interested function.
 def logCompare(path,stageDict):
+    main1= "main-migration-primary.log"
+    main2 = "main-migration-secondary.log"
+    isExist1 = os.path.join(path, main1)
+    isExist2 = os.path.join(path, main2)
     for filename in os.listdir(path):
        # Skip files that are not log files
         if not filename.endswith(".log"):
@@ -26,6 +30,11 @@ def logCompare(path,stageDict):
             stageFile=stageDict[i][0]
             stageStart=stageDict[i][1]
             stageEnd=(stageDict[i][2]).replace("\n","")
+
+            # If main-migration logs in path pass upgrade stages
+            if  os.path.exists(isExist1) or  os.path.exists(isExist2):
+                if stageName =="Upgrade Side" or stageName =="Upgrade Duration Total":
+                    continue
             # Checks if stage log file name stackApiServer
             if stageFile in filename and stageFile=="stackApiServer.log":
                 if stageName=="Image upload VCD" or stageName=="Image upload VmWare":
@@ -57,14 +66,14 @@ def logCompare(path,stageDict):
                     getShutdownVMs(stageFile,stageName,stageStart,stageEnd,path)
                 elif stageName=="VM Remove VMware" or stageName=="VM Remove VCD":
                     vmRemoveMainMigration(stageFile,stageName,stageStart,stageEnd,path)
-                elif stageName=="Full Migration":
+                elif stageName=="Migration Duration Total":
                     newConfigFileWriter(stageName, stageFile, stageStart, stageEnd,filename,path)
                 else:
                     otherStages(stageFile,stageName,stageStart,stageEnd,path)
             # Checks if stage log file name commissioning or configure
             elif stageName == "Commisioning and Configure logs" and ("commissioning" in filename or "configure" in filename): 
                 newConfigFileWriter(filename, filename, stageStart, stageEnd,filename,path)
-                break
+                
             #Checks if stage log file name main mifration
             elif (stageName=="Wait for SM to be Migrated" or stageName=="Migrate DB") and "commissioning" in filename:
                     otherStages(filename,stageName,stageStart,stageEnd,path)
