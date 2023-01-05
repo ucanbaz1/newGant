@@ -16,18 +16,11 @@ patternAMPMFormat=r"\[(\d{2})/(\d{2})/(\d{4}) (\d{1,2}):(\d{2}):(\d{2}) ([AP]M)\
 patternForTimeDifference=r"([A-Za-z]+) ([0-9]+) ([A-Za-z]+) ([0-9]+)  ([0-9]+):([0-9]+):([0-9]+) ([+-][0-9]+)"
 
 timeDict={}
-def getLineNumber(path, filename):
-    # Open the log file
+containertimeDict={}
+def getcontainerTimeDifference(path, filename):
     with open(os.path.join(path, filename), 'r') as f:
-        # Initialize the line number to 0
-        countLine = 0
-        timeRun =""
-        timeChange =""
         timeDifference=""
         timeDifferenceCount=0
-        updateType=False
-        ntpCount=0
-        # Iterate over the lines in the file
         for line in f:
             if timeDifferenceCount<1:
                 try:
@@ -41,6 +34,54 @@ def getLineNumber(path, filename):
                         timeDifferenceCount+=1
                 except:
                     nullcontext
+                
+            
+        if timeDifferenceSTR.__contains__("+"):
+            minus=True
+        else:
+            minus=False
+        containertimeDict[filename]=[timeDifferenceSTR,minus]
+        return containertimeDict
+
+def updateContainerTime(path):
+     for filename in os.listdir(path):
+        # Skip files that are not log files
+        if not filename.endswith(".log"):
+            continue
+        if filename in timeDict: 
+            getTime=containertimeDict[filename][0]
+            minus=containertimeDict[filename][1]
+            getTime = getTime.replace(".", ":")
+            delta = getTime.split(":")
+
+            for line in fileinput.input(os.path.join(path, filename), inplace=True):
+                try:    
+                    newMatch = re.search(patternNFormat, line).group()
+                    if minus: # If minus true, line's time is less than ntp server
+                        newMatchNFormat=datetime.strptime((newMatch), '%Y-%m-%d %H:%M:%S.%f') - timedelta(
+                            hours=int(delta[0]), minutes=int(delta[1]), seconds=int(delta[2]), milliseconds=int(delta[3]))  
+                    elif not minus: #If minus false, line's time is bigger than ntp server
+                        newMatchNFormat = datetime.strptime((newMatch), '%Y-%m-%d %H:%M:%S.%f')+ timedelta(
+                            hours=int(delta[0]), minutes=int(delta[1]), seconds=int(delta[2]), milliseconds=int(delta[3]))
+                    timeUpdate=str(newMatchNFormat).rstrip("000")
+                    if timeUpdate.endswith(":"):
+                        timeUpdate = timeUpdate + "00"
+                    if not timeUpdate.__contains__("."):
+                        timeUpdate = timeUpdate + ".000"
+                    line=line.replace(newMatch,timeUpdate) # Update line with updated time
+                    print(line, end='')
+                except:
+                    nullcontext
+def getLineNumber(path, filename):
+    # Open the log file
+    with open(os.path.join(path, filename), 'r') as f:
+        # Initialize the line number to 0
+        countLine = 0
+        timeRun =""
+        timeChange =""
+        # Iterate over the lines in the file
+        for line in f:
+            
             # Increment the line number
             countLine += 1
             # Check if the current line is the special line
@@ -70,53 +111,29 @@ def getLineNumber(path, filename):
                     if datetime.strptime((timeChange), '%Y-%m-%dT%H:%M:%S%z'):
                         timeFormat = '%Y-%m-%dT%H:%M:%S%z'
                 except:
-                    nullcontext
-                
+                    nullcontext      
                 if datetime.strptime((timeChange), timeFormat) > datetime.strptime((timeRun), timeFormat):
                     timeUpdate=datetime.strptime((timeChange), timeFormat)-datetime.strptime((timeRun), timeFormat)
                     if str(timeUpdate).__contains__("."):
                         timeUpdate = str(timeUpdate).rstrip("000")
                     else:
                        timeUpdate = str(timeUpdate)+".000"
-                    updateType=True
                 elif datetime.strptime((timeChange), timeFormat) < datetime.strptime((timeRun), timeFormat):
                     timeUpdate=datetime.strptime((timeRun), timeFormat)-datetime.strptime((timeChange), timeFormat)
                     if str(timeUpdate).__contains__("."):
                         timeUpdate = "-"+str(timeUpdate).rstrip("000")
                     else:
                         timeUpdate = "-"+str(timeUpdate)+".000"
-                    updateType=True   
-                else:
-                    if (timeDifferenceSTR=="00:00:00.000" and updateType==False) or (not timeDifferenceSTR=="00:00:00.000" and updateType==False):
-                        break     
+                
                 #Checks if commissioning file if line has "-" signature it is less then ntp time 
                 if timeUpdate.__contains__("-"):
-                    if timeDifference.__contains__("+"):
-                        plus = True
-                        timeUpdate=str(timedelta(hours=int(timeUpdate[1])+hour,minutes=int(timeUpdate[3:5])+minute, seconds=int(timeUpdate[6:8])+second, milliseconds=int(timeUpdate[9:])))
-                    elif timeDifference.__contains__("-"):
-                        timeUpdate=str(timedelta(hours=int(timeUpdate[1])-hour,minutes=int(timeUpdate[3:5])-minute, seconds=int(timeUpdate[6:8])-second, milliseconds=int(timeUpdate[9:])))
-                        plus = False
                     minus = True
                     timeUpdate = str(timeUpdate).rstrip("000")
                 else:
-                    if timeDifference.__contains__("+"):
-                        timeUpdate=str(timedelta(hours=int(timeUpdate[0])+hour,minutes=int(timeUpdate[2:4])+minute, seconds=int(timeUpdate[5:7])+second, milliseconds=int(timeUpdate[8:])))
-                        plus = True
-                    elif timeDifference.__contains__("-"):
-                        timeUpdate=str(timedelta(hours=int(timeUpdate[0])-hour,minutes=int(timeUpdate[2:4])-minute, seconds=int(timeUpdate[5:7])-second, milliseconds=int(timeUpdate[8:])))
-                        plus = False
                     minus = False
                     timeUpdate = str(timeUpdate).rstrip("000")
-                if plus ==True or plus==False:
-                    if len(timeUpdate)<6:
-                        timeUpdate = str(timeUpdate) + "00.000"
-                    timeDict[filename]=[countLine,timeUpdate,minus,timeDifferenceSTR,plus]
                 #Adds key and value to the dictionary all datas
-                else:
-                    if len(timeUpdate)<6:
-                        timeUpdate = str(timeUpdate) + "00.000"
-                    timeDict[filename]=[countLine,timeUpdate,minus]
+                timeDict[filename]=[countLine,timeUpdate,minus]
                 #Return Dictionary
                 return timeDict  
 
@@ -153,13 +170,6 @@ def fileReader(path):
             minus=timeDict[filename][2]
             getTime = getTime.replace(".", ":")
             delta = getTime.split(":")
-            try:
-                timeDifferenceSTR=timeDict[filename][3]
-                timeDifferenceSTR = timeDifferenceSTR.replace(".", ":")
-                timeDelta = timeDifferenceSTR.split(":")
-                plus=timeDict[filename][4]
-            except:
-                nullcontext
 
         lineCount=1
         """ If log files encode type is utf-16le format we have to use different format to read lines and then 
@@ -178,8 +188,7 @@ def fileReader(path):
             #Save the ASCII-encoded contents to a new file
             with open(path+"/"+filename, 'w') as f: 
                 f.write(line)
-        if "configure" in filename and isConfigure:
-            delta = getTime.split(":")
+
         for line in fileinput.input(os.path.join(path, filename), inplace=True):
             # Read the lines of the log file
             try:   
@@ -190,9 +199,8 @@ def fileReader(path):
                     for matches in matchNFormat:
                         # İf log file  commissioning or configure update time because of ntp server
                         if isCommissioning or isConfigure:
-                            if lineCount<int(lineNumber) or ((lineCount>=int(lineNumber) and (plus ==True or plus==False))):
-                                if (plus ==True or plus==False) and lineCount==int(lineNumber) and not "configure" in filename:
-                                    delta=timeDelta
+                            if lineCount<int(lineNumber):
+                                newMatch = re.search(patternNFormat, line).group()
                                 if minus: # If minus true, line's time is less than ntp server
                                     newMatchNFormat=datetime.strptime((newMatch), '%Y-%m-%d %H:%M:%S.%f') - timedelta(
                                         hours=int(delta[0]), minutes=int(delta[1]), seconds=int(delta[2]), milliseconds=int(delta[3]))  
@@ -234,14 +242,12 @@ def fileReader(path):
 
                         # İf log file  commissioning or configure update time because of ntp server
                         if isCommissioning or isConfigure:
-                            if (lineCount<int(lineNumber)) or ((lineCount>=int(lineNumber) and (plus ==True or plus==False))):
-                                if (plus ==True or plus==False) and (lineCount==int(lineNumber) and not "configure" in filename):
-                                    delta=timeDelta
+                            if lineCount<int(lineNumber):
                                 newMatch = re.search(patternNFormat, line).group()
-                                if minus or plus: # If minus true, line's time is less than ntp server
+                                if minus: # If minus true, line's time is less than ntp server
                                     newMatchNFormat=datetime.strptime((newMatch), '%Y-%m-%d %H:%M:%S.%f') - timedelta(
                                         hours=int(delta[0]), minutes=int(delta[1]), seconds=int(delta[2]), milliseconds=int(delta[3]))  
-                                elif not minus or not plus: #If minus false, line's time is bigger than ntp server
+                                elif not minus: #If minus false, line's time is bigger than ntp server
                                     newMatchNFormat = datetime.strptime((newMatch), '%Y-%m-%d %H:%M:%S.%f')+ timedelta(
                                         hours=int(delta[0]), minutes=int(delta[1]), seconds=int(delta[2]), milliseconds=int(delta[3]))
                                 timeUpdate=str(newMatchNFormat).rstrip("000")
@@ -250,9 +256,6 @@ def fileReader(path):
                                 if not timeUpdate.__contains__("."):
                                     timeUpdate = timeUpdate + ".000"
                                 line=line.replace(newMatch,timeUpdate) # Update line with updated time
-                                if lineCount==int(lineNumber):
-                                    print(line, end='')
-                                    break
                     #If encod true log file has [12/20/2022 2:01:53 PM] date time like this. So this if statement block removes this line.
                     if encod:
                         try:
@@ -275,7 +278,9 @@ def fileMethod(path):
             if not filename.endswith("commissioning.log"):
                 continue
             getLineNumber(path, filename)
+            getcontainerTimeDifference(path, filename)
 
     fileReader(path)
+    updateContainerTime(path)
 
 
