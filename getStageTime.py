@@ -20,7 +20,7 @@ migStartTime=""
 migEndTime=""
 
 def getKeys(path, stageTimeDict,patternNFormat, colorList):
-       
+    path=path+'/'+'UpdatedLogs'
     for key in stageTimeDict.keys():
         stageName = key
         stageFile = stageTimeDict[key][0]
@@ -153,7 +153,7 @@ def getImageValue(path):
                 Images.append(lineNew)
                 Images.append(linePrev)
                 break
-            elif ("vsphere_file.upload" in line and "MCP" in line) or "Upload /resources/images/" in line :
+            elif (("vsphere_file.upload" in line and "MCP" in line) or "Upload /resources/images/" in line) and "Migration Duration Total 0" in stageNameGroup:
                 if "Upload /resources/images/" in line:
                     migrateImage=(line.split('images/')[1]).split(" to")[0]
                 else:
@@ -164,12 +164,19 @@ def getImageValue(path):
                 Images.append("MCP_21.0")
                 break
             elif not "Migration Duration Total 0" in stageNameGroup and not "Primary Migration 0" in stageNameGroup and not "Secondary Migration 0" in stageNameGroup:
-                if "vsphere_file.upload" in line and "MCP" in line:
-                    migrateImage=(line.split('upload')[1]).split(":")[0]
-                    operator="installation"
-                    Images.append(operator)
-                    Images.append(migrateImage)
-                    break
+                if not "Upgrade Duration Total 0" in stageNameGroup and not "Upgrade Side 0" in stageNameGroup and not "Upgrade Side 1" in stageNameGroup:
+                    if "vsphere_file.upload" in line and "MCP" in line:
+                        migrateImage=(line.split('upload')[1]).split(":")[0]
+                        operator="installation"
+                        Images.append(operator)
+                        Images.append(migrateImage)
+                        break
+                    elif "TASK [Upload /resources/images/" in line : 
+                        migrateImage=(line.split('images/')[1]).split(" to")[0]
+                        operator="installation"
+                        Images.append(operator)
+                        Images.append(migrateImage)
+                        break
 # This function sorts all stages by starting time.
 def sortGraph():
         j=0
@@ -208,15 +215,15 @@ def sortGraph():
                 else:
                     if not  stageNameGroup[i].startswith("Secondary "):
                         stageNameGroup[i] = "Secondary " + stageNameGroup[i]
-        elif Images[0]=="installation":
-            for i in range(len(stageNameGroup)):
-                if stageNameGroup[i]=="Installation Duration Total 0":
-                    continue
-                if stageNameGroup[i] == "Secondary Installation 0":
-                    flag = False
-                if flag:
-                    if not  stageNameGroup[i].startswith("Primary "):
-                        stageNameGroup[i] = "Primary " + stageNameGroup[i]
-                else:
-                    if not  stageNameGroup[i].startswith("Secondary "):
-                        stageNameGroup[i] = "Secondary " + stageNameGroup[i]
+        # elif Images[0]=="installation":
+        #     for i in range(len(stageNameGroup)):
+        #         if stageNameGroup[i]=="Installation Duration Total 0":
+        #             continue
+        #         if stageNameGroup[i] == "Secondary Installation 0":
+        #             flag = False
+        #         if flag:
+        #             if not  stageNameGroup[i].startswith("Primary "):
+        #                 stageNameGroup[i] = "Primary " + stageNameGroup[i]
+        #         else:
+        #             if not  stageNameGroup[i].startswith("Secondary "):
+        #                 stageNameGroup[i] = "Secondary " + stageNameGroup[i]

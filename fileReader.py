@@ -4,6 +4,7 @@ import re
 import fileinput
 from datetime import datetime,timedelta
 import io
+import shutil
 
 #Start of the python file to run filereader.py Gets path and then assign time format.    
 #Datetime formats to read log files. Which time formats matches, that one used. And It can change for every log files.
@@ -36,25 +37,30 @@ def getcontainerTimeDifference(path, filename):
                     nullcontext
                 
             
-        if timeDifferenceSTR.__contains__("+"):
+        if timeDifference.__contains__("+"):
             minus=True
         else:
             minus=False
         containertimeDict[filename]=[timeDifferenceSTR,minus]
         return containertimeDict
 
-def updateContainerTime(path):
-     for filename in os.listdir(path):
+def updateContainerTime(newPath):
+     for filename in os.listdir(newPath):
         # Skip files that are not log files
         if not filename.endswith(".log"):
             continue
-        if filename in timeDict: 
+
+        if "configure" not in filename:
+            timeDifference =False
+        if filename in containertimeDict: 
+            timeDifference=True
             getTime=containertimeDict[filename][0]
             minus=containertimeDict[filename][1]
             getTime = getTime.replace(".", ":")
             delta = getTime.split(":")
-
-            for line in fileinput.input(os.path.join(path, filename), inplace=True):
+        
+        if timeDifference:
+            for line in fileinput.input(os.path.join(newPath, filename), inplace=True):
                 try:    
                     newMatch = re.search(patternNFormat, line).group()
                     if minus: # If minus true, line's time is less than ntp server
@@ -132,13 +138,14 @@ def getLineNumber(path, filename):
                 else:
                     minus = False
                     timeUpdate = str(timeUpdate).rstrip("000")
+                timeUpdate=timeUpdate.lstrip("-")
                 #Adds key and value to the dictionary all datas
                 timeDict[filename]=[countLine,timeUpdate,minus]
                 #Return Dictionary
                 return timeDict  
 
 # List all the files in the directory
-def fileReader(path):   
+def fileReader(path, newPath):   
     for filename in os.listdir(path):
         # Skip files that are not log files
         if not filename.endswith(".log"):
@@ -188,99 +195,110 @@ def fileReader(path):
             #Save the ASCII-encoded contents to a new file
             with open(path+"/"+filename, 'w') as f: 
                 f.write(line)
+        with open(path+'/'+filename, 'r') as file:
+            with open(newPath+'/'+filename, 'a') as newFile:
+                for line in file:
+                # for line in fileinput.input(os.path.join(path, filename)):
+                    # Read the lines of the log file
+                    try:   
+                        # Read lines and if lines is expected time format modify line.              
+                        matchNFormat = re.search(patternNFormat, line).group()
+                        matchTFormat = re.findall(patternTFormat, line)
+                        if matchNFormat and not matchTFormat:
+                            for matches in matchNFormat:
+                                # İf log file  commissioning or configure update time because of ntp server
+                                if isCommissioning or isConfigure:
+                                    if lineCount<int(lineNumber):
+                                        newMatch = re.search(patternNFormat, line).group()
+                                        if minus: # If minus true, line's time is less than ntp server
+                                            newMatchNFormat=datetime.strptime((newMatch), '%Y-%m-%d %H:%M:%S.%f') - timedelta(
+                                                hours=int(delta[0]), minutes=int(delta[1]), seconds=int(delta[2]), milliseconds=int(delta[3]))  
+                                        elif not minus: #If minus false, line's time is bigger than ntp server
+                                            newMatchNFormat = datetime.strptime((newMatch), '%Y-%m-%d %H:%M:%S.%f')+ timedelta(
+                                                hours=int(delta[0]), minutes=int(delta[1]), seconds=int(delta[2]), milliseconds=int(delta[3]))
+                                        timeUpdate=str(newMatchNFormat).rstrip("000")
+                                        if timeUpdate.endswith(":"):
+                                            timeUpdate = timeUpdate + "00"
+                                        if not timeUpdate.__contains__("."):
+                                            timeUpdate = timeUpdate + ".000"
+                                        line=line.replace(newMatch,timeUpdate) # Update line with updated time
+                            #2022-11-30 04:14: 
+                            #If encod true log file has [12/20/2022 2:01:53 PM] date time like this. So this if statement block removes this line.
+                            if encod:
+                                try:
+                                    matchAMPM = re.search(patternAMPMFormat,line).group() # find [12/20/2022 2:01:53 PM] date format
+                                    line = line.replace(matchAMPM,"") #replace with null space
+                                    line = line.lstrip() # remove left space of line
+                                except:
+                                    nullcontext   
+                            newFile.write(line) # This print line writes the lines to log file
+                    except:
+                        nullcontext
+                    
+                    try:
+                        matchTFormat = re.findall(patternTFormat, line)
+                        if matchTFormat:
+                            for matches in matchTFormat:
+                                # These statements checks line time format and updates to a new time format
+                                if matches[10]=="T" and len(matches)<20:
+                                    line = line.replace(matches, matches[:10] + " " + matches[11:] + ".000")
+                                elif matches[19] == '+' or matches[19] =="-":
+                                    line = line.replace(matches, matches[:10] + " " + matches[11:19] + "."+matches[20:23])
+                                elif matches[19]==",":
+                                    line = line.replace(matches, matches[:19] + "."+matches[20:23])
+                                elif matches[19]==".":
+                                    line = line.replace(matches, matches[:10] + " " + matches[11:19] + "." +matches[20:23])
 
-        for line in fileinput.input(os.path.join(path, filename), inplace=True):
-            # Read the lines of the log file
-            try:   
-                # Read lines and if lines is expected time format modify line.              
-                matchNFormat = re.search(patternNFormat, line).group()
-                matchTFormat = re.findall(patternTFormat, line)
-                if matchNFormat and not matchTFormat:
-                    for matches in matchNFormat:
-                        # İf log file  commissioning or configure update time because of ntp server
-                        if isCommissioning or isConfigure:
-                            if lineCount<int(lineNumber):
-                                newMatch = re.search(patternNFormat, line).group()
-                                if minus: # If minus true, line's time is less than ntp server
-                                    newMatchNFormat=datetime.strptime((newMatch), '%Y-%m-%d %H:%M:%S.%f') - timedelta(
-                                        hours=int(delta[0]), minutes=int(delta[1]), seconds=int(delta[2]), milliseconds=int(delta[3]))  
-                                elif not minus: #If minus false, line's time is bigger than ntp server
-                                    newMatchNFormat = datetime.strptime((newMatch), '%Y-%m-%d %H:%M:%S.%f')+ timedelta(
-                                        hours=int(delta[0]), minutes=int(delta[1]), seconds=int(delta[2]), milliseconds=int(delta[3]))
-                                timeUpdate=str(newMatchNFormat).rstrip("000")
-                                if timeUpdate.endswith(":"):
-                                    timeUpdate = timeUpdate + "00"
-                                if not timeUpdate.__contains__("."):
-                                    timeUpdate = timeUpdate + ".000"
-                                line=line.replace(newMatch,timeUpdate) # Update line with updated time
-                    #2022-11-30 04:14: 
-                    #If encod true log file has [12/20/2022 2:01:53 PM] date time like this. So this if statement block removes this line.
-                    if encod:
-                        try:
-                            matchAMPM = re.search(patternAMPMFormat,line).group() # find [12/20/2022 2:01:53 PM] date format
-                            line = line.replace(matchAMPM,"") #replace with null space
-                            line = line.lstrip() # remove left space of line
-                        except:
-                            nullcontext   
-                    print(line, end='') # This print line writes the lines to log file
-            except:
-                nullcontext
-            
-            try:
-                matchTFormat = re.findall(patternTFormat, line)
-                if matchTFormat:
-                    for matches in matchTFormat:
-                        # These statements checks line time format and updates to a new time format
-                        if matches[10]=="T" and len(matches)<20:
-                            line = line.replace(matches, matches[:10] + " " + matches[11:] + ".000")
-                        elif matches[19] == '+' or matches[19] =="-":
-                            line = line.replace(matches, matches[:10] + " " + matches[11:19] + "."+matches[20:23])
-                        elif matches[19]==",":
-                            line = line.replace(matches, matches[:19] + "."+matches[20:23])
-                        elif matches[19]==".":
-                            line = line.replace(matches, matches[:10] + " " + matches[11:19] + "." +matches[20:23])
-
-                        # İf log file  commissioning or configure update time because of ntp server
-                        if isCommissioning or isConfigure:
-                            if lineCount<int(lineNumber):
-                                newMatch = re.search(patternNFormat, line).group()
-                                if minus: # If minus true, line's time is less than ntp server
-                                    newMatchNFormat=datetime.strptime((newMatch), '%Y-%m-%d %H:%M:%S.%f') - timedelta(
-                                        hours=int(delta[0]), minutes=int(delta[1]), seconds=int(delta[2]), milliseconds=int(delta[3]))  
-                                elif not minus: #If minus false, line's time is bigger than ntp server
-                                    newMatchNFormat = datetime.strptime((newMatch), '%Y-%m-%d %H:%M:%S.%f')+ timedelta(
-                                        hours=int(delta[0]), minutes=int(delta[1]), seconds=int(delta[2]), milliseconds=int(delta[3]))
-                                timeUpdate=str(newMatchNFormat).rstrip("000")
-                                if timeUpdate.endswith(":"):
-                                    timeUpdate = timeUpdate + "00"
-                                if not timeUpdate.__contains__("."):
-                                    timeUpdate = timeUpdate + ".000"
-                                line=line.replace(newMatch,timeUpdate) # Update line with updated time
-                    #If encod true log file has [12/20/2022 2:01:53 PM] date time like this. So this if statement block removes this line.
-                    if encod:
-                        try:
-                            matchAMPM = re.search(patternAMPMFormat,line).group() # find [12/20/2022 2:01:53 PM] date format
-                            line = line.replace(matchAMPM,"") #replace with null space
-                            line = line.lstrip() # remove left space of line
-                        except:
-                            nullcontext   
-                    print(line, end='') # This print line, writes the lines to log file
-            except:
-                nullcontext 
-            if "configure" not in filename: # If configure comes from path lineCount should not increase. Because all time should update.
-                lineCount+=1 
-           
+                                # İf log file  commissioning or configure update time because of ntp server
+                                if isCommissioning or isConfigure:
+                                    if lineCount<int(lineNumber):
+                                        newMatch = re.search(patternNFormat, line).group()
+                                        if minus: # If minus true, line's time is less than ntp server
+                                            newMatchNFormat=datetime.strptime((newMatch), '%Y-%m-%d %H:%M:%S.%f') - timedelta(
+                                                hours=int(delta[0]), minutes=int(delta[1]), seconds=int(delta[2]), milliseconds=int(delta[3]))  
+                                        elif not minus: #If minus false, line's time is bigger than ntp server
+                                            newMatchNFormat = datetime.strptime((newMatch), '%Y-%m-%d %H:%M:%S.%f')+ timedelta(
+                                                hours=int(delta[0]), minutes=int(delta[1]), seconds=int(delta[2]), milliseconds=int(delta[3]))
+                                        timeUpdate=str(newMatchNFormat).rstrip("000")
+                                        if timeUpdate.endswith(":"):
+                                            timeUpdate = timeUpdate + "00"
+                                        if not timeUpdate.__contains__("."):
+                                            timeUpdate = timeUpdate + ".000"
+                                        line=line.replace(newMatch,timeUpdate) # Update line with updated time
+                            #If encod true log file has [12/20/2022 2:01:53 PM] date time like this. So this if statement block removes this line.
+                            if encod:
+                                try:
+                                    matchAMPM = re.search(patternAMPMFormat,line).group() # find [12/20/2022 2:01:53 PM] date format
+                                    line = line.replace(matchAMPM,"") #replace with null space
+                                    line = line.lstrip() # remove left space of line
+                                except:
+                                    nullcontext   
+                            # with open(newPath+'/'+filename, 'a') as file:
+                                # Write the formatted lines to the file
+                            newFile.write(line)
+                            # print(line, end='') # This print line, writes the lines to log file
+                    except:
+                        nullcontext 
+                    if "configure" not in filename: # If configure comes from path lineCount should not increase. Because all time should update.
+                        lineCount+=1 
+                
 
 # path = input("Enter File path: ")
 def fileMethod(path):
     for filename in os.listdir(path):
             # Skip files that are not commissioning.log files
-            if not filename.endswith("commissioning.log"):
-                continue
-            getLineNumber(path, filename)
-            getcontainerTimeDifference(path, filename)
-
-    fileReader(path)
-    updateContainerTime(path)
+            if filename.endswith("commissioning.log"):
+                getLineNumber(path, filename)
+           
+            if filename.endswith("commissioning.log") or filename.endswith("migration-primary.log") or filename.endswith("nigration-secondary.log") or "vnfr" in filename:
+            # if filename.endswith("commissioning.log") or filename.endswith("migration-primary.log") or filename.endswith("nigration-secondary.log"):                
+                getcontainerTimeDifference(path, filename)
+    newPath=path+"/UpdatedLogs"
+    if os.path.exists(newPath):
+        shutil.rmtree(newPath)
+        os.makedirs(newPath)
+        
+    fileReader(path,newPath)
+    updateContainerTime(newPath)
 
 

@@ -18,6 +18,7 @@ stageTimeDict={}
 def logCompare(path,stageDict):
     main1= "main-migration-primary.log"
     main2 = "main-migration-secondary.log"
+    path=path+'/'+'UpdatedLogs'
     isExist1 = os.path.join(path, main1)
     isExist2 = os.path.join(path, main2)
     for filename in os.listdir(path):
@@ -49,10 +50,10 @@ def logCompare(path,stageDict):
                     vmCreationVmware(stageFile,stageName,stageStart,stageEnd,path)
                 elif stageName=="VM Disk Replacement":
                     vmDiskReplacement(stageFile,stageName,stageStart,stageEnd,path)
-                # elif stageName=="Migration VM Create":
-                #     MigVMCreate(stageFile,stageName,stageStart,stageEnd,path)
-                # elif stageName=="Objects Create":
-                #     MigObjectsCreate(stageFile,stageName,stageStart,stageEnd,path)
+                elif stageName=="VM Create":
+                    VMCreate(stageFile,stageName,stageStart,stageEnd,path)
+                elif stageName=="Installation Duration Total":
+                    ObjectsCreate(stageFile,stageName,stageStart,stageEnd,path)
                 else:
                     otherStages(stageFile,stageName,stageStart,stageEnd,path)   
             # Checks if stage log file name vnfr
@@ -147,28 +148,29 @@ def vmDiskReplacement(stageFile,stageName,stageStart,stageEnd,path):
                         serverNEList.append(ServerNEName)
     updateStages(serverNEList,stageName,stageStart,stageEnd,stageFile,None,path) 
 #Reads log file and if stage name in log file 
-# def MigVMCreate(stageFile,stageName,stageStart,stageEnd,path):
-#     serverNEList=[]
-#     with open(os.path.join(path, stageFile), 'r') as f:
-#             lines = f.readlines()
-#             for line in lines:
-#                 if stageStart.strip("<ServerName>") in line:
-#                         line = line.split('] ')[1]
-#                         ServerNEName = line.split(r"/")[-1].strip("config-")
-#                         serverNEList.append(ServerNEName)
-#     updateStages(serverNEList,stageName,stageStart,stageEnd,stageFile,None,path) 
+def VMCreate(stageFile,stageName,stageStart,stageEnd,path):
+    serverNEList=[]
+    with open(os.path.join(path, stageFile), 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                if stageStart.strip("<ServerName>") in line:
+                        line = line.split('] ')[1]
+                        ServerNEName = (line.split("Create ISO from /objects/as_generic_vnf/resources/KvmAsRg/")[1]).split("]")[0]
+                        serverNEList.append(ServerNEName)
+    updateStages(serverNEList,stageName,stageStart,stageEnd,stageFile,None,path) 
 #Reads log file and if stage name in log file 
-# def MigObjectsCreate(stageFile,stageName,stageStart,stageEnd,path):
-#     serverNEList=[]
-#     with open(os.path.join(path, stageFile), 'r') as f:
-#             lines = f.readlines()
-#             for line in lines:
-#                 if "Schedule object" in line:
-#                         line = (line.split("Schedule object")[1]).split("create")[0]
-#                         ServerNEName = line
-#                         serverNEList.append(ServerNEName)
-#     updateStages(serverNEList,stageName,stageStart,stageEnd,stageFile,None,path) 
-#Reads log file and if stage name in log file 
+def ObjectsCreate(stageFile,stageName,stageStart,stageEnd,path):
+    serverNEList=[]
+    with open(os.path.join(path, stageFile), 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                if ("Schedule object" in line) and ("as_generic" in line or "vnf" in line):   
+                    line = (line.split("Schedule object ")[1]).split(" create")[0]
+                    ServerNEName = line
+                    serverNEList.append(ServerNEName)
+                    
+    updateStages(serverNEList,stageName,stageStart,stageEnd,stageFile,None,path) 
+# Reads log file and if stage name in log file 
 def otherStages(stageFile,stageName,stageStart,stageEnd,path):
     with open(os.path.join(path, stageFile), 'r') as f:
         lines = f.readlines()
@@ -234,6 +236,11 @@ def updateStages(serverNEList,stageName,stageStart,stageEnd,stageFile,filename,p
             VMStageName = stageName.replace(prevServerName,stageUpdate)
             VMStartTask = stageStart.replace(prevServerName, i)
             VMEndTask = stageEnd
+        elif stageName=="VM Create":
+            prevServerName="<ServerName>"
+            VMStageName = stageName + " " + i
+            VMStartTask = stageStart.replace(prevServerName, i)
+            VMEndTask = stageEnd.replace(prevServerName, i.split("config-")[1])
         else:
             prevServerName="<ServerName>"
             VMStageName = stageName + " " + i
@@ -266,7 +273,7 @@ def newConfigFileWriter(stageName, stageFile, startTask, endTask,filename,path):
         
 # Reads trial file and assign stages in a dictionary
 def stageMethod(path):
-    with open(os.path.join(path, trialFile), 'r') as f:
+    with open(trialFile, 'r') as f:
 
         for line in f:
             if line.startswith("#") or line.startswith("\n"):
