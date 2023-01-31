@@ -3,18 +3,26 @@ import csv
 from contextlib import nullcontext
 
 
-"""
-This python file reads trial file and gets stages if there are in logs file. Then it creates config.csf file for all stages.
-"""
 
-# path =""
-trialFile="myTrial.txt"
+
+stageFile="stageFile.txt"
 stageNameList=[]
-stageList=[]
 stageDict={}
 stageTimeDict={}
+vnfrCount=0
+"""
+This code is a log comparator that takes a path and a dictionary of stages as input. 
+It then searches the logs in the directory specified by the path and compares the contents 
+of the log files with the stages in the dictionary. The code checks the name of each log file
+and performs a specific operation depending on the stage name and log file name. If the log 
+file name is "stackApiServer.log", the code performs one of several operations, such as
+"getMCPVersion", "getVCDCreation", "getVCDRemoving", "threeStages", "manuelRaf", "vmCreationVmware", 
+"vmDiskReplacement", "VMCreate", or "ObjectsCreate". If the log file name is "vnfr", the code performs 
+the "vnfrStages" operation. If the log file name is "main-migration", the code performs one of several 
+operations, such as "getDbBackup", "getShutdownVMs", "vmRemoveMainMigration", or "newConfigFileWriter". 
+If the log file name is "commissioning" or "configure", the code performs the "newConfigFileWriter" operation.
 
-# This function reads dictionary and check stages with if statement. Then it sends to interested function.
+"""
 def logCompare(path,stageDict):
     main1= "main-migration-primary.log"
     main2 = "main-migration-secondary.log"
@@ -36,7 +44,7 @@ def logCompare(path,stageDict):
             if  os.path.exists(isExist1) or  os.path.exists(isExist2):
                 if stageName =="Upgrade Side" or stageName =="Upgrade Duration Total":
                     continue
-            # Checks if stage log file name stackApiServer
+            # Checks if stage log file name stackApiServer and searh stagenames
             if stageFile in filename and stageFile=="stackApiServer.log":
                 if stageName=="Image upload VCD" or stageName=="Image upload VmWare":
                     getMCPVersion(stageFile,stageName,stageStart,stageEnd,path)
@@ -44,8 +52,10 @@ def logCompare(path,stageDict):
                     getVCDCreation(stageFile,stageName,stageStart,stageEnd,path)
                 elif stageName=="Remove VCD VM":
                     getVCDRemoving(stageFile,stageName,stageStart,stageEnd,path)
-                elif (stageName=="Config Drive") or (stageName=="Create cloud-init ISO") or (stageName=="Remove VMWARE VM") or (stageName=="Create cloud-init ISO VCD") :
+                elif (stageName=="Config Drive") or (stageName=="Create cloud-init ISO") or (stageName=="Create cloud-init ISO AS") or (stageName=="Check Vnfr Reachable") or (stageName=="Remove VMWARE VM") or (stageName=="Create As Tarbal") or (stageName=="commission-vm-from-raf"):
                     threeStages(stageFile,stageName,stageStart,stageEnd,path)
+                elif (stageName=="Manuel Half RAF VMs"):
+                     manuelRaf(stageFile,stageName,stageStart,stageEnd,path)
                 elif stageName=="VM Creation":
                     vmCreationVmware(stageFile,stageName,stageStart,stageEnd,path)
                 elif stageName=="VM Disk Replacement":
@@ -75,8 +85,8 @@ def logCompare(path,stageDict):
             elif stageName == "Commisioning and Configure logs" and ("commissioning" in filename or "configure" in filename): 
                 newConfigFileWriter(filename, filename, stageStart, stageEnd,filename,path)
                 
-            #Checks if stage log file name main mifration
-            elif (stageName=="Wait for SM to be Migrated" or stageName=="Migrate DB") and "commissioning" in filename:
+            #Checks if stage log file name main migration
+            elif (stageName=="Wait for SM" or stageName=="Migrate DB") and "commissioning" in filename:
                     otherStages(filename,stageName,stageStart,stageEnd,path)
 
 
@@ -125,6 +135,17 @@ def threeStages(stageFile,stageName,stageStart,stageEnd,path):
                     ServerNEName = (line.split(".yml ")[1]).split("\n")[0]
                     serverNEList.append(ServerNEName)
     updateStages(serverNEList,stageName,stageStart,stageEnd,stageFile,None,path) 
+
+#Reads log file and if stage name in log file 
+def manuelRaf(stageFile,stageName,stageStart,stageEnd,path):
+    serverNEList = []
+    with open(os.path.join(path, stageFile), 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                if stageStart.strip("<ServerName>") in line :
+                    ServerNEName = (line.split("on")[1]).split("in")[0]
+                    serverNEList.append(ServerNEName)
+    updateStages(serverNEList,stageName,stageStart,stageEnd,stageFile,None,path) 
 #Reads log file and if stage name in log file 
 def vmCreationVmware(stageFile,stageName,stageStart,stageEnd,path):
     serverNEList = []
@@ -164,7 +185,7 @@ def ObjectsCreate(stageFile,stageName,stageStart,stageEnd,path):
     with open(os.path.join(path, stageFile), 'r') as f:
             lines = f.readlines()
             for line in lines:
-                if ("Schedule object" in line) and ("as_generic" in line or "vnf" in line):   
+                if ("Schedule object" in line) and ("as_generic" in line.lower() or "vnf" in line.lower()):   
                     line = (line.split("Schedule object ")[1]).split(" create")[0]
                     ServerNEName = line
                     serverNEList.append(ServerNEName)
@@ -226,8 +247,34 @@ def vmRemoveMainMigration(stageFile,stageName,stageStart,stageEnd,path):
                         line = (line.split("VM ")[1]).split("]")[0]
                         ServerNEName = line
                         serverNEList.append(ServerNEName)
-    updateStages(serverNEList,stageName,stageStart,stageEnd,stageFile,None,path)                    
-#This functions updates stages for servername.
+    updateStages(serverNEList,stageName,stageStart,stageEnd,stageFile,None,path)      
+
+
+"""
+This code is updating the stages in a configuration file by replacing placeholder values with actual values.
+The code takes in the following parameters:
+
+serverNEList: a list of server names
+stageName: the name of the stage
+stageStart: the start task of the stage
+stageEnd: the end task of the stage
+stageFile: the file containing the stage configuration
+filename: the name of the output file
+path: the path to the output file
+For each server name in serverNEList, the code performs the following steps:
+
+If "Calling" is in stageStart, it updates the stage name by replacing a placeholder value with 
+the server name, updates the start task by replacing the server name placeholder with the actual 
+server name, and sets the end task to be the same as stageEnd.
+If the stage name is "VM Create", it updates the stage name by appending the server name,
+updates the start task by replacing the server name placeholder with the actual server name, 
+and updates the end task by replacing a placeholder value with the server name without the "config-" prefix.
+For all other stage names, it updates the stage name by appending the server name, 
+updates the start task by replacing the server name placeholder with the actual server name, 
+and updates the end task by replacing a placeholder value with the actual server name.
+
+Finally, the function calls another function named "newConfigFileWriter" and passes in the updated stage name, stage file, start task, end task, output file name, and output path.
+"""
 def updateStages(serverNEList,stageName,stageStart,stageEnd,stageFile,filename,path):
     for i in serverNEList:
         if "Calling" in stageStart:
@@ -248,32 +295,34 @@ def updateStages(serverNEList,stageName,stageStart,stageEnd,stageFile,filename,p
             VMEndTask = stageEnd.replace(prevServerName, i)
         newConfigFileWriter(VMStageName, stageFile, VMStartTask, VMEndTask,filename,path)    
 
-#Creates config.csv for stages and it creates a dictionary.
+"""
+newConfigFileWriter function updates a dictionary called stageTimeDict which is storing information
+about a certain stage. The function checks if the stage name is already in the dictionary, 
+and if it is, it will add a unique identifier to it 
+(by adding the value of the variable vnfrCount to the stage name). 
+If the stage name is not already in the dictionary, the function will store the stage name, 
+the stage file, the start task, and the end task in the dictionary.
+"""
 def newConfigFileWriter(stageName, stageFile, startTask, endTask,filename,path):
     isThere=False
-    for i in stageList: # Check if stageName is a dublicated data or not 
-        if stageName ==i:
-            print("{} ---->>>> is already there so skipping".format(i))
+
+    if stageName in stageTimeDict:
+        if not stageTimeDict[stageName][0]==filename and not filename==None:
+            global vnfrCount
+            stageName=stageName+str(vnfrCount)
+            vnfrCount+=1 
+        else:
+            print("{} ---->>>> is already there so skipping".format(stageName))
             isThere=True
-            break
-    if not isThere:  #Put into the lists if it is not dublicated  
-        stageList.append(stageName)
-        with open(path+'/Config.csv', 'a', newline='') as csvfile:
-            # Create a CSV writer object
-            writer = csv.writer(csvfile)
-            # Write the column headers if the file is empty
-            if csvfile.tell() == 0:
-                writer.writerow(['StageName', 'LogFileName', 'StageTaskStart', 'StageTaskEnd'])
-            # Write the data to the file, one column at a time
-            writer.writerow([stageName, stageFile, startTask,endTask])
+    if not isThere:  #Put into the dictioanry if it is not dublicated  
             if not filename ==None:
                 stageTimeDict[stageName]=[filename,startTask,endTask]
             else: 
                 stageTimeDict[stageName]=[stageFile,startTask,endTask]
         
-# Reads trial file and assign stages in a dictionary
+# Reads stage file txt
 def stageMethod(path):
-    with open(trialFile, 'r') as f:
+    with open(stageFile, 'r') as f:
 
         for line in f:
             if line.startswith("#") or line.startswith("\n"):
@@ -282,11 +331,6 @@ def stageMethod(path):
                 stageItems = (line.replace('; ',';')).split(";")
                 stageNameList.append(stageItems[0])
                 stageDict[stageItems[0]]=[stageItems[1],stageItems[2],stageItems[3]]
-        
-        try:
-            os.remove(path + "/Config.csv")
-        except:
-            nullcontext
     logCompare(path,stageDict)
 
 

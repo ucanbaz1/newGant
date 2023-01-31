@@ -1,0 +1,5 @@
+,Task,Start,Finish,Duration
+0,Upgrade Duration Total 0,2023-01-10 04:26:13,2023-01-12 07:22:06,"Duration: 2 days, 2:55:53"
+1,Primary Upgrade Side 0,2023-01-10 10:15:05,2023-01-10 13:35:01,Duration: 3:19:56
+2,Secondary Upgrade Side 1,2023-01-12 04:47:53,2023-01-12 07:22:06,Duration: 2:34:13
+3,Half Pause 0,2023-01-10 13:35:01,2023-01-12 04:47:53,"Duration: 1 day, 15:12:52"

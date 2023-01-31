@@ -1,0 +1,110 @@
+#FORMAT:
+#Stage Name;file name;start task;end task
+#
+#
+#Use <ServerName> for variables
+# If you want to start from the beggining of a file (independent of taskname) please use FILE_START
+#If you want to use the timestamp of the end of a file (independent of taskname) please use FILE_END
+
+#*****************Migration Stages*****************
+Create OMI Users; stackApiServer.log; Run playbook: /iac_main/iac/life-cycle-automation/common/playbooks/commissioning/create-vm-omi-users.yml; PLAY RECAP
+Unreachable Vm List; main-migration-primary.log; Check if buffer/unreachableVmList is present; Create buffer/unreachableVmList with content
+Checks alarms; main-migration-primary.log; pre-check-alarm.yml: Pre-Check for critical system alarms; Fail On Upgrade Critical Alarm using diff list created from the skip alarm list and last run
+cleanup-replication-Check DB backup.tar.gz; main-migration-primary.log; cleanup-replication-backup-db.yml: Cleanup DB Replication. Create Pre DBS Migrate Backup; Check pre_DBS_migration_backup.tar.gz file
+Get DB Backup and Transfer; main-migration-primary.log; TASK [Backup the DB]; TASK [Transfer DB backup from <ServerName> VM to remote server]
+Switch NEs; main-migration-primary.log; switch-ne-to-secondary.yml: Login to OMI Pre-Switchover; key-exchange.yml: Get Primary DB keys
+Convert DB-Migrate Oracle; main-migration-primary.log; primary-convert-db.yml: Convert Primary DB schema to new release formats; TASK [Transfer SQL dump files]
+Fetch Key; main-migration-primary.log; fetch-key.yml: Fetch private key for backup restore; Check if bkrstr-full_id_rsa and bkrstr-all_id_rsa keys exist
+Migration Fact; main-migration-primary.log; migration-facts.yml: Fetch vars used in migrate playbooks; Save AS MCP Load name for migration
+Shutdown VMs; main-migration-primary.log; shutdown-vms.yml: Shutdown VMs. Wait for ping loss; to shutdown_vms list
+Shutdown VMs VCD; main-migration-primary.log; Shutdown VMs on VCD; shutdown_vms list
+Primary Hosts Patching; main-migration-primary.log; MIGRATE:PRIMARY:UPGRADE:PLE4; Print PLE 'upgraded to' version
+Primary vm-disk-image-partition; main-migration-primary.log; vm-disk-image-partition.yml: Create Logical Volume for VM disk images; Restore dir + content to default SELinux context, if not Disabled
+Primary VM Remove; main-migration-primary.log; main-migration-primary.yml: Delete VMs - Primary;MIGRATE:PRIMARY:RAF_DEPLOY
+Secondary Hosts Patching; main-migration-secondary.log; MIGRATE:SECONDARY:UPGRADE:PLE4; Print PLE 'upgraded to' version
+Secondary vm-disk-image-partition; main-migration-secondary.log; vm-disk-image-partition.yml: Create Logical Volume for VM disk images; Restore dir + content to default SELinux context, if not Disabled
+Secondary VM Remove; main-migration-secondary.log; main-migration-secondary.yml: Delete VMs - Secondary;MIGRATE:SECONDARY:RAF_DEPLOY
+Primary Migration; main-migration-primary.log; MIGRATE:PRIMARY:SETUP:PLE4; MIGRATE:PRIMARY:DONE
+Secondary Migration; main-migration-secondary.log; MIGRATE:SECONDARY:SETUP:PLE4; MIGRATE:SECONDARY:DONE
+Migration Duration Total; main-migration-secondary.log; MIGRATE:PRIMARY:SETUP:PLE4; MIGRATE:SECONDARY:DONE
+Migrate DB; commissioning.log; Migrate DB; TASK [Run DB Install]
+Primary Host Patching; main-migration-primary.log; ple4-host-upgrade.yml: Upgrade Primary Host - PLE4;vm-disk-image-partition.yml: Create Logical Volume for VM disk images
+Secondary Host Patching; main-migration-secondary.log; ple4-host-upgrade.yml: Upgrade Primary Host - PLE4;vm-disk-image-partition.yml: Create Logical Volume for VM disk images
+
+
+#****************Installation Stages***************
+Installation Duration Total; stackApiServer.log; Schedule object <ServerName> create; Set object state to ready
+Create RG VMs; stackApiServer.log; Run playbook: /iac_main/iac/life-cycle-automation/instantiate-terminate/kvm/createVm.yml; PLAY RECAP
+Create Logical Volume For Image; stackApiServer.log; Run playbook: /iac_main/iac/life-cycle-automation/instantiate-terminate/kvm/createLogicalVolumeForImages.yml; PLAY RECAP
+Host System Check; stackApiServer.log; Run playbook: /iac_main/iac/infrastructure-automation/kvm/host/hostSystemCheck.yml; PLAY RECAP
+Host Check; stackApiServer.log; Run playbook: /iac_main/iac/infrastructure-automation/kvm/host/hostCheck.yml; PLAY RECAP
+Create Logical Volume; stackApiServer.log; Run playbook: /iac_main/iac/life-cycle-automation/as/instantiate-terminate/kvm/createLogicalVolumeForImages.yml; PLAY RECAP
+Run Specbook; stackApiServer.log; Run playbook: /iac_main/iac/life-cycle-automation/as/common/playbooks/commissioning/run_specbook.yml; PLAY RECAP
+Vmware Set AuotoStart; stackApiServer.log; Run playbook: /iac_main/iac/life-cycle-automation/common/playbooks/vmware-set-autostart.yml; PLAY RECAP
+
+
+#***************Upgrade VMWARE Stages**************
+Image upload VmWare; stackApiServer.log; vsphere_file.upload<ServerName>: Creating...; vsphere_file.upload<ServerName>: Creation complete
+Remove VMWARE VM; stackApiServer.log; Run playbook: /iac_main/iac/life-cycle-automation/repair/vmware//removeVm.yml <ServerName>; PLAY RECAP (/iac_main/iac/life-cycle-automation/repair/vmware//removeVm.yml
+VM Creation; stackApiServer.log; <ServerName>.null_resource.create_compatible_vmdk: Creating...; <ServerName>.null_resource.create_compatible_vmdk: Creation complete
+
+
+#****************Upgrade VCD Stages****************
+Image upload VCD; stackApiServer.log; vcd_catalog_item.AS_vm_template_upload<ServerName>: Creating...; vcd_catalog_item.AS_vm_template_upload<ServerName>: Creation complete
+Remove VCD VM; stackApiServer.log; AS_vm<ServerName>: Destroying...; AS_vm<ServerName>: Destruction complete
+VM Creation VCD; stackApiServer.log; AS_vm<ServerName>: Creating...; AS_vm<ServerName>: Creation complete
+
+
+#****************Upgrade KVM Stages****************
+VM Disk Replacement; stackApiServer.log; Shutting off the VM : <ServerName>; Successfully started the VM : <ServerName>
+Image upload KVM; stackApiServer.log; Get timestamp: Start Upload; Get timestamp: Finish Upload
+VM Create; stackApiServer.log; Create ISO from /objects/as_generic_vnf/resources/KvmAsRg/<ServerName>; Successfully started VM: <ServerName> on host
+
+
+#***************Upgrade General Stages***************
+Upgrade <ServerName> pre-check; vnfr; Calling /var/mcp/raf/upgrade/pre-checks.yml <ServerName>; [ansible_utils.py:run_playbook()] - Final Ansible results
+Upgrade <ServerName> pre-actions; vnfr; Calling /var/mcp/raf/upgrade/pre-actions.yml <ServerName>; [ansible_utils.py:run_playbook()] - Final Ansible results
+Upgrade <ServerName> post-check; vnfr; Calling /var/mcp/raf/upgrade/post-checks.yml <ServerName>; [ansible_utils.py:run_playbook()] - Final Ansible results
+Upgrade <ServerName> post-actions; vnfr; Calling /var/mcp/raf/upgrade/post-actions.yml <ServerName>; [ansible_utils.py:run_playbook()] - Final Ansible results
+Reset Action; vnfr; Calling /var/mcp/raf/rollback/reset-actions.yml; [ansible_utils.py:run_playbook()] - Final Ansible results
+Update VNFR AS; stackApiServer.log; update-cert-and-vnfr.yml None; PLAY RECAP (/iac_main/iac/life-cycle-automation/as/common/playbooks/update-cert-and-vnfr.yml
+Update VNFR; stackApiServer.log; update-cert-and-vnfr.yml None; PLAY RECAP (/iac_main/iac/life-cycle-automation/common/playbooks/update-cert-and-vnfr.yml
+Check VM and Inconsistencies; stackApiServer.log; Start fetch_update_type(); Check for difference in manifest provided and object definition
+Mop Apply; stackApiServer.log; upload_mop starting; endTime
+Config Drive; stackApiServer.log; Run playbook: /iac_main/iac/life-cycle-automation/as/instantiate-terminate/kvm/upgradeCreateConfigDrive.yml <ServerName>; PLAY RECAP
+Get VNFR Logs; stackApiServer.log; Run playbook: /iac_main/iac/life-cycle-automation/common/playbooks/get-vnfr-logs.yml; PLAY RECAP
+Create cloud-init ISO AS; stackApiServer.log; Run playbook: /iac_main/iac/life-cycle-automation/as/common/playbooks/create-as-cloud-init-iso-file.yml <ServerName>; PLAY RECAP
+Create cloud-init ISO; stackApiServer.log; Run playbook: /iac_main/iac/life-cycle-automation/common/playbooks/create-as-cloud-init-iso-file.yml <ServerName>; PLAY RECAP
+Upgrade Duration Total; stackApiServer.log; Start fetch_update_type(); Set object state to ready
+#Upgrade Duration Total; stackApiServer.log; Start thread: update_object(), from apply(); Set object state to ready
+Upgrade Side; stackApiServer.log; Start fetch_update_type(); Set object state to ready
+#Upgrade Side; stackApiServer.log; Start thread: update_object(), from apply(); Set object state to ready 
+Check Inconsistencies; stackApiServer.log; Run playbook: /iac_main/iac/life-cycle-automation/as/repair/vmware//checkResourceInconsistencies.yml; PLAY RECAP
+
+
+#***************JPMC Upgrade Stages***************
+Manuel Half RAF VMs; stackApiServer.log; Start upgrade on<ServerName>; PLAY RECAP (/iac_main/iac/life-cycle-automation/common/playbooks/check-vms-for-commissioning.yml
+Check Vnfr Reachable; stackApiServer.log; Run playbook: /iac_main/iac/life-cycle-automation/common/playbooks/check-vms-for-commissioning.yml <ServerName>; PLAY RECAP
+Create As Tarbal; stackApiServer.log; Run playbook: /iac_main/iac/life-cycle-automation/common/playbooks/create-as-tarball.yml <ServerName>; PLAY RECAP
+commission-vm-from-raf; stackApiServer.log; Run playbook: /iac_main/iac/life-cycle-automation/common/playbooks/commission-vm-from-raf.yml <ServerName>; PLAY RECAP
+
+
+#***************Rollback General Stages***************
+Rollback <ServerName> pre-check; vnfr; Calling /var/mcp/raf/rollback/pre-checks.yml <ServerName>; [ansible_utils.py:run_playbook()] - Final Ansible results
+Rollback <ServerName> pre-actions; vnfr; Calling /var/mcp/raf/rollback/pre-checks.yml <ServerName>; [ansible_utils.py:run_playbook()] - Final Ansible results
+Rollback <ServerName> post-check; vnfr; Calling /var/mcp/raf/rollback/pre-checks.yml <ServerName>; [ansible_utils.py:run_playbook()] - Final Ansible results
+Rollback <ServerName> post-actions; vnfr; Calling /var/mcp/raf/rollback/pre-checks.yml <ServerName>; [ansible_utils.py:run_playbook()] - Final Ansible results
+
+
+#****************General Stages****************
+Post Start; stackApiServer.log; post-start.yml None; Set object state to ready
+Commisioning and Configure logs; logs ; FILE_START; FILE_END
+QCOW transfer for all VM; stackApiServer.log; Upload/copy qcow2 image to remote KVM hosts; Start VM instantiation
+Wait for SM; commissioning.log; Wait for Primary SM migration to complete; Set Primary SM as leader
+##Delete RG VMs; stackApiServer.log; Run playbook: /iac_main/iac/life-cycle-automation/instantiate-terminate/kvm/deleteVm.yml; PLAY RECAP
+
+
+
+
+
+
